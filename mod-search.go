@@ -11,6 +11,10 @@ import (
 	"path"
 )
 
+var (
+	mod_path = "\xFFmodPath"
+)
+
 //export modSearch
 func modSearch(ctx *C.duk_context) C.duk_ret_t {
 	/* Nargs was given as 4 and we get the following stack arguments:
@@ -24,7 +28,8 @@ func modSearch(ctx *C.duk_context) C.duk_ret_t {
 		modPath = fmt.Sprintf("%s.js", modPath)
 	}
 
-	absModPath := toAbsPath(exePath, modPath)
+	modHome := getModuleHome(ctx)
+	absModPath := toAbsPath(modHome, modPath)
 	b, err := os.ReadFile(absModPath)
 	if err != nil {
 		return 0
@@ -49,7 +54,9 @@ func setObjFunction(ctx *C.duk_context, funcName string, fn C.duk_c_function, na
 	C.duk_put_prop(ctx, -3)  // [ obj ] with obj[funcName]=fn
 }
 
-func setModSearch(ctx *C.duk_context) {
+func setModSearch(ctx *C.duk_context, moduleHome string) {
+	setModuleHome(ctx, moduleHome)
+
 	duktape := "Duktape"
 	var cDuktape *C.char
 	var length C.int
@@ -58,6 +65,42 @@ func setModSearch(ctx *C.duk_context) {
 	C.duk_get_global_lstring(ctx, cDuktape, C.size_t(length))
 	setObjFunction(ctx, "modSearch", (C.duk_c_function)(C.modSearch), 4)
 	C.duk_pop(ctx)
+}
+
+func setModuleHome(ctx *C.duk_context, moduleHome string) {
+	C.duk_push_global_object(ctx); // [ global ]
+	defer C.duk_pop(ctx) // [ ]
+
+	var name *C.char
+	var length C.int
+	getStrPtrLen(&mod_path, &name, &length)
+	C.duk_push_lstring(ctx, name, C.size_t(length)) // [ global mod_path ]
+
+	var home string
+	if len(moduleHome) > 0 {
+		home = moduleHome
+	} else {
+		home = exePath
+	}
+	getStrPtrLen(&home, &name, &length)
+	C.duk_push_lstring(ctx, name, C.size_t(length)) // [ global mod_path home ]
+	C.duk_put_prop(ctx, -3)  // [ global ] with global[mod_path] = home
+}
+
+func getModuleHome(ctx *C.duk_context) string {
+	var modHome string
+
+	var name *C.char
+	var length C.int
+	getStrPtrLen(&mod_path, &name, &length)
+	C.duk_get_global_lstring(ctx, name, C.size_t(length)) // [ home ]
+	if val, err := fromJsValue(ctx); err == nil {
+		modHome = fmt.Sprintf("%s", val.(string))
+	} else {
+		modHome = exePath
+	}
+	C.duk_pop(ctx) // [ ]
+	return modHome
 }
 
 func getExecWD() (string, error) {

@@ -24,15 +24,14 @@ func InitCache() {
 	jsCtxCache = make(map[string]*jsCtx)
 }
 
-func LoadFileFromCache(path string, vars map[string]interface{}, withGlobalHeap ...bool) (ctx *JsContext, existing bool, err error) {
-	fromGlobalHeap := len(withGlobalHeap) > 0 && withGlobalHeap[0]
+func LoadFileFromCache(path string, vars map[string]interface{}, options ...Option) (ctx *JsContext, existing bool, err error) {
 	lock.Lock()
 	defer lock.Unlock()
 
 	jsC, ok := jsCtxCache[path]
 
 	if !ok {
-		if ctx, err = createJSContext(path, vars, fromGlobalHeap); err != nil {
+		if ctx, err = createJSContext(path, vars, options...); err != nil {
 			return
 		}
 		fi, _ := os.Stat(path)
@@ -51,7 +50,7 @@ func LoadFileFromCache(path string, vars map[string]interface{}, withGlobalHeap 
 	}
 	mt := fi.ModTime()
 	if !jsC.mt.Equal(mt) {
-		if ctx, err = createJSContext(path, vars, fromGlobalHeap); err != nil {
+		if ctx, err = createJSContext(path, vars, options...); err != nil {
 			return
 		}
 		jsC.jsvm = ctx
@@ -63,8 +62,8 @@ func LoadFileFromCache(path string, vars map[string]interface{}, withGlobalHeap 
 	return
 }
 
-func createJSContext(path string, vars map[string]interface{}, fromGlobalHeap bool) (ctx *JsContext, err error) {
-	if ctx, err = NewContext(!fromGlobalHeap); err != nil {
+func createJSContext(path string, vars map[string]interface{}, options ...Option) (ctx *JsContext, err error) {
+	if ctx, err = NewContext(options...); err != nil {
 		return
 	}
 	if _, err = ctx.EvalFile(path, vars); err != nil {

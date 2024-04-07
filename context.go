@@ -29,6 +29,7 @@ import (
 var (
 	globalHeap *C.duk_context
 	globalMu = &sync.Mutex{}
+	preludeLoaded = false
 )
 
 func init() {
@@ -36,7 +37,6 @@ func init() {
 	if globalHeap == nil {
 		panic("failed to init duktape heap")
 	}
-	loadPreludeModules(globalHeap)
 }
 
 /*
@@ -56,10 +56,18 @@ type JsContext struct {
 	withGlobalHeap bool
 }
 
-func NewContext(withoutGlobalHeap ...bool) (*JsContext, error) {
+func NewContext(options ...Option) (*JsContext, error) {
+	o := getOptions(options...)
+	globalMu.Lock()
+	if !preludeLoaded {
+		loadPreludeModules(globalHeap, o.moduleHome)
+		preludeLoaded = true
+	}
+	globalMu.Unlock()
+
 	var ctx *C.duk_context
 
-	withGlobalHeap := !(len(withoutGlobalHeap) > 0 && withoutGlobalHeap[0])
+	withGlobalHeap := o.withGlobalHeap
 	if withGlobalHeap {
 		globalMu.Lock()
 		defer globalMu.Unlock()
@@ -73,7 +81,7 @@ func NewContext(withoutGlobalHeap ...bool) (*JsContext, error) {
 	}
 
 	if !withGlobalHeap {
-		loadPreludeModules(ctx)
+		loadPreludeModules(ctx, o.moduleHome)
 	}
 	registerGoProxyHandlers(ctx)
 	c := &JsContext {
@@ -91,14 +99,14 @@ func freeJsContext(ctx *JsContext) {
 		C.duk_destroy_heap(c)
 	}
 	delPtrStore((uintptr(unsafe.Pointer(c))))
-	fmt.Printf("context freed\n")
+	// fmt.Printf("context freed\n")
 }
 
-func loadPreludeModules(ctx *C.duk_context) {
+func loadPreludeModules(ctx *C.duk_context, moduleHome string) {
 	C.duk_print_alert_init(ctx, 0)
 	C.duk_console_init(ctx, C.duk_uint_t(C.DUK_CONSOLE_STDERR_ONLY|C.DUK_CONSOLE_FLUSH))
 	C.duk_module_duktape_init(ctx)
-	setModSearch(ctx)
+	setModSearch(ctx, moduleHome)
 }
 
 func (ctx *JsContext) Eval(script string, env map[string]interface{}) (res interface{}, err error) {
