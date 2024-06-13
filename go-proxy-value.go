@@ -10,6 +10,7 @@ package djs
 import "C"
 import (
 	elutils "github.com/rosbit/go-embedding-utils"
+	"encoding/json"
 	"reflect"
 	"unsafe"
 	"math"
@@ -32,11 +33,14 @@ func pushJsProxyValue(ctx *C.duk_context, v interface{}) {
 			C.duk_push_false(ctx)
 		}
 		return
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32/*, reflect.Int64*/:
 		C.duk_push_number(ctx, C.duk_double_t(vv.Int()))
 		return
-	case reflect.Uint,reflect.Uint8,reflect.Uint16,reflect.Uint32,reflect.Uint64:
+	case reflect.Uint,reflect.Uint8,reflect.Uint16,reflect.Uint32/*,reflect.Uint64*/:
 		C.duk_push_number(ctx, C.duk_double_t(vv.Uint()))
+		return
+	case reflect.Int64, reflect.Uint64:
+		pushString(ctx, fmt.Sprintf("%v", v))
 		return
 	case reflect.Float32, reflect.Float64:
 		fv := vv.Float()
@@ -47,6 +51,19 @@ func pushJsProxyValue(ctx *C.duk_context, v interface{}) {
 		C.duk_push_number(ctx, C.duk_double_t(fv))
 		return
 	case reflect.String:
+		if (vv.Type().String() == "json.Number") {
+			n := v.(json.Number)
+			pushString(ctx, n.String())
+			/*
+			if n64, e := n.Int64(); e == nil {
+				C.duk_push_number(ctx, C.duk_double_t(n64))
+				return
+			}
+			f64, _ := n.Float64()
+			C.duk_push_number(ctx, C.duk_double_t(f64))
+			*/
+			return
+		}
 		pushString(ctx, v.(string))
 		return
 	case reflect.Slice:
